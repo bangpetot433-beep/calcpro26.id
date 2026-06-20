@@ -9,6 +9,13 @@ const $ = (id) => document.getElementById(id);
 const fmtNum = (n) => parseFloat(n.toFixed(8)).toString();
 const fmtRp  = (n) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
 
+// Get API base URL (works both locally and on any domain)
+const API_BASE = (() => {
+  const protocol = window.location.protocol;
+  const host = window.location.host;
+  return `${protocol}//${host}`;
+})();
+
 /* ── TOAST ─────────────────────────────────── */
 function toast(type, title, msg) {
   const icons = { success: '✓', error: '✕', info: 'ℹ' };
@@ -70,31 +77,44 @@ $('mobileMenuBtn').addEventListener('click', openSidebar);
 overlay.addEventListener('click', closeSidebar);
 
 /* ── API HELPER ─────────────────────────────── */
-async function api(url, body) {
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-
-  // If a host (e.g. GitHub Pages) returns index.html for unknown paths,
-  // the response may be HTML (text/html) with a 200 status. Calling
-  // r.json() on that will throw. Detect non-JSON responses and provide
-  // a clearer error so the app doesn't crash with an unrelated parse error.
-  const ct = r.headers.get('content-type') || '';
-  if (!ct.includes('application/json')) {
-    const txt = await r.text();
-    if (txt && /<html|<!doctype html/i.test(txt)) {
-      throw new Error(`Endpoint tidak ditemukan atau salah URL: ${url}`);
-    }
-    throw new Error('Server mengembalikan respons bukan JSON.');
-  }
-
-  let d;
+async function api(endpoint, body) {
+  const url = `${API_BASE}${endpoint}`;
+  
+  let r;
   try {
-    d = await r.json();
+    r = await fetch(url, { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify(body) 
+    });
   } catch (err) {
-    throw new Error('Gagal menguraikan JSON dari server.');
+    throw new Error(`Koneksi gagal: ${err.message}`);
   }
 
-  if (!r.ok) throw new Error(d.error || 'Terjadi kesalahan pada server.');
-  return d;
+  // Get content type header
+  const contentType = r.headers.get('content-type') || '';
+  
+  // Check if response is HTML (GitHub Pages returns index.html for 404)
+  if (!contentType.includes('application/json')) {
+    // If server responds with HTML, it's definitely an error
+    throw new Error(`Endpoint tidak ditemukan: ${endpoint}. Server tidak tersedia atau endpoint salah.`);
+  }
+
+  // Try to parse JSON
+  let data;
+  try {
+    data = await r.json();
+  } catch (err) {
+    // If JSON parsing fails, likely HTML was returned
+    throw new Error(`Server mengembalikan respons bukan JSON. Pastikan backend/API sedang berjalan.`);
+  }
+
+  // Check HTTP status
+  if (!r.ok) {
+    throw new Error(data.error || `Error ${r.status}: ${r.statusText}`);
+  }
+
+  return data;
 }
 
 /* ── HISTORY ────────────────────────────────── */
@@ -147,8 +167,6 @@ document.querySelectorAll('.op-btn').forEach(btn => {
    PANJANG
    ═══════════════════════════════════════════ */
 $('swap-panjang').addEventListener('click', () => {
-  [($('panjang-dari').value), ($('panjang-ke').value)] = [$('panjang-ke').value, $('panjang-dari').value];
-  // swap via temp
   const tmp = $('panjang-dari').value;
   $('panjang-dari').value = $('panjang-ke').value;
   $('panjang-ke').value = tmp;
