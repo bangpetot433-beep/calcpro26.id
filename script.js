@@ -72,7 +72,27 @@ overlay.addEventListener('click', closeSidebar);
 /* ── API HELPER ─────────────────────────────── */
 async function api(url, body) {
   const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  const d = await r.json();
+
+  // If a host (e.g. GitHub Pages) returns index.html for unknown paths,
+  // the response may be HTML (text/html) with a 200 status. Calling
+  // r.json() on that will throw. Detect non-JSON responses and provide
+  // a clearer error so the app doesn't crash with an unrelated parse error.
+  const ct = r.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    const txt = await r.text();
+    if (txt && /<html|<!doctype html/i.test(txt)) {
+      throw new Error(`Endpoint tidak ditemukan atau salah URL: ${url}`);
+    }
+    throw new Error('Server mengembalikan respons bukan JSON.');
+  }
+
+  let d;
+  try {
+    d = await r.json();
+  } catch (err) {
+    throw new Error('Gagal menguraikan JSON dari server.');
+  }
+
   if (!r.ok) throw new Error(d.error || 'Terjadi kesalahan pada server.');
   return d;
 }
